@@ -8,9 +8,15 @@ import android.os.Bundle;
 import android.util.Log;
 
 import java.io.File;
+import java.io.IOException;
 
+import org.eclipse.jgit.api.CheckoutResult;
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.PullCommand;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.errors.NoWorkTreeException;
+import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.RepositoryBuilder;
 import org.eclipse.jgit.lib.RepositoryCache;
@@ -23,80 +29,118 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Context mContext = getApplicationContext();
         File path = mContext.getExternalFilesDir("repo");
-        File mDir = new File(path, "llconverter1");
-        if (!mDir.exists() ) {
+        File mDir = new File(path, "ed");
+        if (!mDir.exists()) {
             mDir.mkdir();
         }
-        new cloneT(mDir).execute();
+        String remote_ = "http://192.168.5.7/yangyu/LLDataConverter.git";
+        remote_ = "http://192.168.5.7/yangyu/eEyeData.git";
+        new updateMapTask(mDir, remote_).execute();
         setContentView(R.layout.activity_main);
     }
 
-    public static boolean cloneRepo(File f ) {
-         CloneCommand cloneCommand = Git.cloneRepository()
-                .setURI("https://github.com/grystudy/test.git").setCloneAllBranches(true)
-//                .setURI("http://192.168.5.7/yangyu/LLDataConverter.git").setCloneAllBranches(true)
+    public static boolean cloneRepo(File f, String remote_) {
+        CloneCommand cloneCommand = Git.cloneRepository()
+                //          .setURI("https://github.com/grystudy/test.git").setCloneAllBranches(true)
+                .setURI(remote_).setCloneAllBranches(true)
 //                .setProgressMonitor(new RepoCloneMonitor())
 //                .setTransportConfigCallback(new SgitTransportCallback())
                 .setDirectory(f)
                 .setCloneSubmodules(false);
-
-        String username = "yangy@meixing.com";
-        username = "grystudy";
-        String password ="gry654321";
-
-        if (username != null && password != null && !username.equals("")
-                && !password.equals("")) {
-            UsernamePasswordCredentialsProvider auth = new UsernamePasswordCredentialsProvider(
-                    username, password);
-            cloneCommand.setCredentialsProvider(auth);
-        }
         try {
-         Git newgitdegub =  cloneCommand.call();
-//            Profile.setLastCloneSuccess();
+            Git newgitdegub = cloneCommand.call();
         }
-//        catch (InvalidRemoteException e) {
-//            setException(e, R.string.error_invalid_remote);
-//            Profile.setLastCloneFailed(mRepo);
-//            return false;
-//        } catch (TransportException e) {
-//            setException(e);
-//            Profile.setLastCloneFailed(mRepo);
-//            handleAuthError(mOnPasswordEnter);
-//            return false;
-//        } catch (GitAPIException e) {
-//            setException(e, R.string.error_clone_failed);
-//            return false;
-//        } catch (JGitInternalException e) {
-//            setException(e);
-//            return false;
-//        }
+
         catch (OutOfMemoryError e) {
-//            setException(e, R.string.error_out_of_memory);
             return false;
-        } catch (Throwable e) {
-//            setException(e);
+        } catch (Exception e) {
             return false;
         }
         return true;
     }
 
-    class cloneT extends AsyncTask<String,String,Boolean> {
+    public static Git getGit(File repoFile) {
+        try {
+            Git mGit = Git.open(repoFile);
+            return mGit;
+        } catch (RepositoryNotFoundException e) {
+            return null;
+        } catch (Throwable e) {
+            return null;
+        }
+    }
 
+    public static boolean status(Git git) {
+        if (git == null) {
+            return false;
+        }
+        try {
+            org.eclipse.jgit.api.Status status = git.status().call();
+            if (status.isClean()) return true;
+        } catch (NoWorkTreeException e) {
+            return false;
+        } catch (GitAPIException e) {
+            return false;
+//        }
+//        catch (StopTaskException e) {
+//            return false;
+        } catch (Throwable e) {
+            return false;
+        }
+        return false;
+    }
+
+    class updateMapTask extends AsyncTask<String, String, Boolean> {
         private File f;
+        private String mRemote;
 
-        public cloneT(File ff) {
+        public updateMapTask(File ff, String remote_) {
             this.f = ff;
+            this.mRemote = remote_;
         }
 
         @Override
         protected Boolean doInBackground(String... params) {
-            MainActivity.cloneRepo(f);
+            Git git = MainActivity.getGit(f);
+            if (git == null || MainActivity.status(git) == false) {
+                MainActivity.deleteFile(f);
+                MainActivity.cloneRepo(f, mRemote);
+            } else {
+                PullCommand pullCommand = git.pull()
+                        .setRemote("origin");
+                try {
+                    pullCommand.call();
+                } catch (Exception e) {
+                    MainActivity.deleteFile(f);
+                    MainActivity.cloneRepo(f, mRemote);
+                    return false;
+                }
+            }
             return true;
         }
 
         @Override
         protected void onPostExecute(Boolean result) {
             Log.i("mylog", "请求结果为-->" + "ok");
+        }
+    }
+
+    public static void deleteFile(File file) {
+        if (file.exists() == false) return;
+        if (file.isFile()) {
+            file.delete();
+            return;
+        }
+        if (file.isDirectory()) {
+            File[] childFiles = file.listFiles();
+            if (childFiles == null || childFiles.length == 0) {
+                file.delete();
+                return;
+            }
+            for (int i = 0; i < childFiles.length; i++) {
+                deleteFile(childFiles[i]);
+            }
+            file.delete();
         }
     }
 }
